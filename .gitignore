@@ -1,0 +1,9 @@
+.next/
+node_modules/
+.env.local
+.env
+*.env
+prisma/dev.db
+prisma/migrations/
+tsconfig.tsbuildinfo
+.claude/

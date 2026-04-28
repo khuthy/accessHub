@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  FAN
+  MODEL
+  ADMIN
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  GALLERY
+}
+
+enum TransactionType {
+  PURCHASE
+  SPEND
+  REFUND
+}
+
+enum LiveStatus {
+  OFFLINE
+  LIVE
+  ENDED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  role      Role     @default(FAN)
+  createdAt DateTime @default(now())
+
+  profile   ModelProfile?
+  wallet    FanWallet?
+  posts     Post[]
+  unlocks   ContentUnlock[]
+  liveRooms LiveRoom[]
+}
+
+model ModelProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName String
+  bio         String?
+  avatarUrl   String?
+  bannerUrl   String?
+  tokenPrice  Int     @default(50)
+  slug        String  @unique
+}
+
+model FanWallet {
+  id           String             @id @default(cuid())
+  userId       String             @unique
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance      Int                @default(0)
+  transactions TokenTransaction[]
+}
+
+model TokenTransaction {
+  id        String          @id @default(cuid())
+  walletId  String
+  wallet    FanWallet       @relation(fields: [walletId], references: [id])
+  amount    Int
+  type      TransactionType
+  note      String?
+  createdAt DateTime        @default(now())
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  modelId     String
+  model       User      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  previewUrl  String?
+  mediaUrl    String?
+  mediaType   MediaType @default(IMAGE)
+  tokenCost   Int       @default(0)
+  isPublished Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  unlocks ContentUnlock[]
+}
+
+model ContentUnlock {
+  id        String   @id @default(cuid())
+  fanId     String
+  fan       User     @relation(fields: [fanId], references: [id])
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([fanId, postId])
+}
+
+model LiveRoom {
+  id             String     @id @default(cuid())
+  modelId        String
+  model          User       @relation(fields: [modelId], references: [id])
+  title          String
+  muxStreamKey   String?
+  muxPlaybackId  String?
+  tokenCost      Int        @default(20)
+  status         LiveStatus @default(OFFLINE)
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime   @default(now())
+}
