@@ -38,15 +38,21 @@ export default function UploadPage() {
     let finalMediaUrl = mediaUrl;
 
     // Upload files if selected
-    if (previewFile) {
-      const res = await uploadPreview([previewFile]);
-      if (!res?.[0]) { setError("Preview upload failed"); setSaving(false); return; }
-      finalPreviewUrl = res[0].ufsUrl;
-    }
-    if (mediaFile) {
-      const res = await uploadMedia([mediaFile]);
-      if (!res?.[0]) { setError("Media upload failed"); setSaving(false); return; }
-      finalMediaUrl = res[0].ufsUrl;
+    try {
+      if (previewFile) {
+        const res = await uploadPreview([previewFile]);
+        if (!res?.[0]) { setError("Preview upload failed — check your internet and try again"); setSaving(false); return; }
+        finalPreviewUrl = res[0].ufsUrl;
+      }
+      if (mediaFile) {
+        const res = await uploadMedia([mediaFile]);
+        if (!res?.[0]) { setError("Media upload failed — check your internet and try again"); setSaving(false); return; }
+        finalMediaUrl = res[0].ufsUrl;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+      setSaving(false);
+      return;
     }
 
     const res = await fetch("/api/content", {
