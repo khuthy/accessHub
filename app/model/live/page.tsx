@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Radio } from "lucide-react";
+import { GiftFeed } from "@/components/live/GiftFeed";
 
 interface StreamInfo {
   roomId: string;
@@ -98,6 +99,9 @@ export default function LivePage() {
             userId={session?.user.id ?? "host"}
             userName={session?.user.username ?? "Host"}
           />
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <GiftFeed roomId={stream.roomId} />
+          </div>
           <button
             onClick={endStream}
             className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition"
