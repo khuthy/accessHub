@@ -1,22 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Radio, Copy, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
+import { Radio } from "lucide-react";
 
 interface StreamInfo {
   roomId: string;
-  streamKey: string;
-  rtmpUrl: string;
-  playbackId: string;
+  dbRoomId: string;
 }
 
 export default function LivePage() {
+  const { data: session } = useSession();
   const [title, setTitle] = useState("");
   const [tokenCost, setTokenCost] = useState(20);
   const [stream, setStream] = useState<StreamInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [ending, setEnding] = useState(false);
-  const [copied, setCopied] = useState<"key" | "url" | null>(null);
   const [error, setError] = useState("");
 
   async function startStream() {
@@ -31,42 +29,31 @@ export default function LivePage() {
     });
 
     let data: Record<string, string> = {};
-    try {
-      data = await res.json();
-    } catch {
-      setError("Server error — check the terminal for details");
-      setLoading(false);
-      return;
+    try { data = await res.json(); } catch {
+      setError("Server error"); setLoading(false); return;
     }
+
     if (!res.ok) {
       setError(data.error || "Failed to start stream");
     } else {
-      setStream(data as unknown as StreamInfo);
+      setStream({ roomId: data.roomId, dbRoomId: data.dbRoomId });
     }
     setLoading(false);
   }
 
   async function endStream() {
     if (!stream) return;
-    setEnding(true);
     await fetch("/api/live/end", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roomId: stream.roomId }),
+      body: JSON.stringify({ roomId: stream.dbRoomId }),
     });
     setStream(null);
-    setEnding(false);
     setTitle("");
   }
 
-  function copy(text: string, type: "key" | "url") {
-    navigator.clipboard.writeText(text);
-    setCopied(type);
-    setTimeout(() => setCopied(null), 2000);
-  }
-
   return (
-    <div className="max-w-xl space-y-6">
+    <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-3">
         <Radio className={`w-6 h-6 ${stream ? "text-red-500 animate-pulse" : "text-zinc-400"}`} />
         <h1 className="text-2xl font-bold text-zinc-50">
@@ -75,7 +62,7 @@ export default function LivePage() {
       </div>
 
       {!stream ? (
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-sm">
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-1">Stream title *</label>
             <input
@@ -85,67 +72,37 @@ export default function LivePage() {
               className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-1">Token cost to watch</label>
             <input
-              type="number"
-              min={0}
-              max={9999}
-              value={tokenCost}
+              type="number" min={0} max={9999} value={tokenCost}
               onChange={(e) => setTokenCost(Number(e.target.value))}
               className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
-
           {error && (
-            <p className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-lg px-3 py-2">
-              {error}
-            </p>
+            <p className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-lg px-3 py-2">{error}</p>
           )}
-
           <button
-            onClick={startStream}
-            disabled={loading}
+            onClick={startStream} disabled={loading}
             className="w-full py-2.5 gradient-brand text-white font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
           >
             <Radio className="w-4 h-4" />
-            {loading ? "Setting up…" : "Start stream"}
+            {loading ? "Starting…" : "Start stream"}
           </button>
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="p-4 bg-red-950/20 border border-red-900 rounded-xl">
-            <p className="text-red-400 font-medium text-sm mb-1">Stream is live</p>
-            <p className="text-zinc-300 text-sm">{title}</p>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-zinc-300">
-              Paste these into OBS (Settings → Stream):
-            </p>
-
-            <InfoRow
-              label="RTMP URL"
-              value={stream.rtmpUrl}
-              onCopy={() => copy(stream.rtmpUrl, "url")}
-              copied={copied === "url"}
-            />
-            <InfoRow
-              label="Stream Key"
-              value={stream.streamKey}
-              secret
-              onCopy={() => copy(stream.streamKey, "key")}
-              copied={copied === "key"}
-            />
-          </div>
-
+          <ZegoHost
+            roomId={stream.roomId}
+            userId={session?.user.id ?? "host"}
+            userName={session?.user.username ?? "Host"}
+          />
           <button
             onClick={endStream}
-            disabled={ending}
-            className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg disabled:opacity-50 transition"
+            className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition"
           >
-            {ending ? "Ending…" : "End stream"}
+            End stream
           </button>
         </div>
       )}
@@ -153,43 +110,40 @@ export default function LivePage() {
   );
 }
 
-function InfoRow({
-  label,
-  value,
-  secret,
-  onCopy,
-  copied,
-}: {
-  label: string;
-  value: string;
-  secret?: boolean;
-  onCopy: () => void;
-  copied: boolean;
-}) {
-  const [show, setShow] = useState(!secret);
+function ZegoHost({ roomId, userId, userName }: { roomId: string; userId: string; userName: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const appID = Number(process.env.NEXT_PUBLIC_ZEGOCLOUD_APP_ID);
+    const serverSecret = process.env.NEXT_PUBLIC_ZEGOCLOUD_SERVER_SECRET!;
+    if (!appID || !serverSecret) return;
+
+    let zp: { destroy: () => void } | null = null;
+
+    import("@zegocloud/zego-uikit-prebuilt").then(({ ZegoUIKitPrebuilt }) => {
+      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+        appID, serverSecret, roomId, userId, userName
+      );
+      zp = ZegoUIKitPrebuilt.create(kitToken);
+      zp.joinRoom({
+        container: containerRef.current,
+        scenario: {
+          mode: ZegoUIKitPrebuilt.LiveStreaming,
+          config: { role: ZegoUIKitPrebuilt.Host },
+        },
+        showLeaveRoomConfirmDialog: false,
+        showRoomDetailsButton: false,
+      });
+    });
+
+    return () => { zp?.destroy(); };
+  }, [roomId, userId, userName]);
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-      <p className="text-xs text-zinc-500 mb-1">{label}</p>
-      <div className="flex items-center gap-2">
-        <code className="flex-1 text-sm text-zinc-200 font-mono break-all">
-          {show ? value : "••••••••••••••••"}
-        </code>
-        {secret && (
-          <button
-            onClick={() => setShow(!show)}
-            className="text-xs text-zinc-400 hover:text-zinc-200"
-          >
-            {show ? "Hide" : "Show"}
-          </button>
-        )}
-        <button
-          onClick={onCopy}
-          className="p-1.5 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition"
-        >
-          {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
+    <div
+      ref={containerRef}
+      className="w-full rounded-xl overflow-hidden border border-zinc-800"
+      style={{ height: 560 }}
+    />
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { randomUUID } from "crypto";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,60 +21,24 @@ export async function POST(req: NextRequest) {
       data: { status: "ENDED", endedAt: new Date() },
     });
 
-    // If Mux is not configured, create a placeholder stream for testing
-    if (!process.env.MUX_TOKEN_ID || !process.env.MUX_TOKEN_SECRET) {
-      const room = await db.liveRoom.create({
-        data: {
-          modelId: session.user.id,
-          title,
-          tokenCost: tokenCost ?? 20,
-          muxStreamKey: "test-stream-key-add-mux-credentials",
-          muxPlaybackId: null,
-          status: "LIVE",
-          startedAt: new Date(),
-        },
-      });
-
-      return NextResponse.json({
-        roomId: room.id,
-        streamKey: "test-stream-key-add-mux-credentials",
-        rtmpUrl: "rtmps://global-live.mux.com:443/app",
-        playbackId: null,
-        warning: "Mux credentials not configured — stream key is a placeholder",
-      });
-    }
-
-    // Lazy-import Mux so missing credentials don't crash the module at startup
-    const { mux } = await import("@/lib/mux");
-
-    const stream = await mux.video.liveStreams.create({
-      playback_policy: ["public"],
-      new_asset_settings: { playback_policy: ["public"] },
-    });
+    const zegoRoomId = randomUUID();
 
     const room = await db.liveRoom.create({
       data: {
         modelId: session.user.id,
         title,
         tokenCost: tokenCost ?? 20,
-        muxStreamKey: stream.stream_key,
-        muxPlaybackId: stream.playback_ids?.[0]?.id ?? null,
+        muxStreamKey: zegoRoomId, // repurposed to store ZEGOCLOUD room ID
+        muxPlaybackId: null,
         status: "LIVE",
         startedAt: new Date(),
       },
     });
 
-    return NextResponse.json({
-      roomId: room.id,
-      streamKey: stream.stream_key,
-      rtmpUrl: "rtmps://global-live.mux.com:443/app",
-      playbackId: room.muxPlaybackId,
-    });
-  } catch (err) {
+    return NextResponse.json({ roomId: zegoRoomId, dbRoomId: room.id });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[LIVE/START]", err);
-    return NextResponse.json(
-      { error: "Failed to start stream. Check server logs." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

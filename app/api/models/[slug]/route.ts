@@ -24,16 +24,16 @@ export async function GET(
               title: true,
               description: true,
               previewUrl: true,
+              mediaUrl: true,
               mediaType: true,
               tokenCost: true,
               createdAt: true,
-              // Never return mediaUrl here; fetched per-post via /api/content/[id]
             },
           },
           liveRooms: {
             where: { status: "LIVE" },
             take: 1,
-            select: { id: true, title: true, tokenCost: true, muxPlaybackId: true },
+            select: { id: true, title: true, tokenCost: true, muxStreamKey: true },
           },
         },
       },
@@ -54,11 +54,16 @@ export async function GET(
     unlockedPostIds = new Set(unlocks.map((u) => u.postId));
   }
 
-  const postsWithUnlockStatus = profile.user.posts.map((post) => ({
-    ...post,
-    isUnlocked:
-      session?.user.id === profile.userId || unlockedPostIds.has(post.id),
-  }));
+  const postsWithUnlockStatus = profile.user.posts.map((post) => {
+    const isUnlocked =
+      session?.user.id === profile.userId || unlockedPostIds.has(post.id);
+    return {
+      ...post,
+      isUnlocked,
+      // Strip mediaUrl from locked posts so it can't be read from the API response
+      mediaUrl: isUnlocked ? post.mediaUrl : null,
+    };
+  });
 
   return NextResponse.json({
     ...profile,

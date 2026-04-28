@@ -106,19 +106,27 @@ export default function UploadPage() {
         </button>
       </form>
 
-      <div className="p-4 bg-zinc-900 border border-zinc-700 rounded-xl text-sm text-zinc-400">
-        <p className="font-medium text-zinc-300 mb-1">Tip: Hosting your media</p>
-        <p>
-          Upload your images/videos to a free host like{" "}
-          <a href="https://cloudinary.com" className="text-brand-400 hover:underline" target="_blank">
-            Cloudinary
-          </a>{" "}
-          or{" "}
-          <a href="https://imgbb.com" className="text-brand-400 hover:underline" target="_blank">
-            ImgBB
-          </a>{" "}
-          and paste the URL here. Direct upload coming soon.
-        </p>
+      <div className="p-4 bg-zinc-900 border border-zinc-700 rounded-xl text-sm space-y-3">
+        <p className="font-medium text-zinc-200">How to host your content</p>
+        <div>
+          <p className="text-zinc-400 font-medium mb-0.5">Images</p>
+          <p className="text-zinc-500">
+            Upload to{" "}
+            <a href="https://imgbb.com" className="text-brand-400 hover:underline" target="_blank">ImgBB</a>
+            {" "}(free) → right-click the image → &quot;Copy image address&quot; → paste the <code className="text-zinc-300">.jpg/.png</code> URL here.
+          </p>
+        </div>
+        <div>
+          <p className="text-zinc-400 font-medium mb-0.5">Videos</p>
+          <p className="text-zinc-500">
+            Upload to{" "}
+            <a href="https://cloudinary.com" className="text-brand-400 hover:underline" target="_blank">Cloudinary</a>
+            {" "}or{" "}
+            <a href="https://bunny.net" className="text-brand-400 hover:underline" target="_blank">Bunny.net</a>
+            {" "}→ copy the direct <code className="text-zinc-300">.mp4</code> link.
+            {" "}<span className="text-red-400 font-medium">Links from xvideos, Pornhub, etc. will not work</span> — you need a direct file URL, not a webpage link.
+          </p>
+        </div>
       </div>
     </div>
   );
