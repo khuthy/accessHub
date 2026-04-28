@@ -2,38 +2,71 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUploadThing } from "@/lib/uploadthing-client";
+import { Upload, ImageIcon, Video, X, CheckCircle } from "lucide-react";
 
 export default function UploadPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [tokenCost, setTokenCost] = useState(0);
+  const [isPublished, setIsPublished] = useState(true);
+  const [mediaType, setMediaType] = useState<"IMAGE" | "VIDEO">("IMAGE");
+
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [mediaUrl, setMediaUrl] = useState("");
+
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const { startUpload: uploadPreview, isUploading: uploadingPreview } =
+    useUploadThing("previewImage");
+  const { startUpload: uploadMedia, isUploading: uploadingMedia } =
+    useUploadThing("contentMedia");
+
+  const isUploading = uploadingPreview || uploadingMedia;
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    if (!title.trim()) { setError("Title is required"); return; }
+    setSaving(true);
     setError("");
 
-    const fd = new FormData(e.currentTarget);
-    const body = {
-      title: fd.get("title") as string,
-      description: fd.get("description") as string,
-      previewUrl: fd.get("previewUrl") as string,
-      mediaUrl: fd.get("mediaUrl") as string,
-      mediaType: fd.get("mediaType") as string,
-      tokenCost: Number(fd.get("tokenCost")),
-      isPublished: fd.get("isPublished") === "on",
-    };
+    let finalPreviewUrl = previewUrl;
+    let finalMediaUrl = mediaUrl;
+
+    // Upload files if selected
+    if (previewFile) {
+      const res = await uploadPreview([previewFile]);
+      if (!res?.[0]) { setError("Preview upload failed"); setSaving(false); return; }
+      finalPreviewUrl = res[0].ufsUrl;
+    }
+    if (mediaFile) {
+      const res = await uploadMedia([mediaFile]);
+      if (!res?.[0]) { setError("Media upload failed"); setSaving(false); return; }
+      finalMediaUrl = res[0].ufsUrl;
+    }
 
     const res = await fetch("/api/content", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        title,
+        description,
+        previewUrl: finalPreviewUrl,
+        mediaUrl: finalMediaUrl,
+        mediaType,
+        tokenCost,
+        isPublished,
+      }),
     });
 
     const data = await res.json();
     if (!res.ok) {
       setError(data.error || "Failed to create post");
-      setLoading(false);
+      setSaving(false);
     } else {
       router.push("/model/content");
     }
@@ -43,51 +76,98 @@ export default function UploadPage() {
     <div className="max-w-xl space-y-6">
       <h1 className="text-2xl font-bold text-zinc-50">Upload Content</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Title *" name="title" required />
-        <Field label="Description" name="description" textarea />
-
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-1">
-            Media type
-          </label>
-          <select
-            name="mediaType"
-            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="IMAGE">Image</option>
-            <option value="VIDEO">Video</option>
-            <option value="GALLERY">Gallery</option>
-          </select>
+          <label className="block text-sm font-medium text-zinc-300 mb-1">Title *</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            placeholder="Give your post a title"
+            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
         </div>
 
-        <Field
-          label="Preview image URL (public)"
-          name="previewUrl"
-          placeholder="https://... (shown to everyone)"
-        />
-        <Field
-          label="Full media URL (gated)"
-          name="mediaUrl"
-          placeholder="https://... (shown after unlock)"
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-300 mb-1">Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            placeholder="Optional description…"
+            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+
+        {/* Media type */}
+        <div>
+          <label className="block text-sm font-medium text-zinc-300 mb-2">Content type</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["IMAGE", "VIDEO"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setMediaType(t)}
+                className={`flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition ${
+                  mediaType === t
+                    ? "border-brand-500 gradient-brand text-white"
+                    : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                }`}
+              >
+                {t === "IMAGE" ? <ImageIcon className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+                {t === "IMAGE" ? "Image" : "Video"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Preview image upload */}
+        <FilePickerField
+          label="Preview thumbnail (shown to everyone, free)"
+          accept="image/*"
+          file={previewFile}
+          uploading={uploadingPreview}
+          onSelect={setPreviewFile}
+          onClear={() => setPreviewFile(null)}
+          hint="JPG, PNG, WebP — max 8MB"
         />
 
+        {/* Full media upload */}
+        <FilePickerField
+          label={`Full ${mediaType === "VIDEO" ? "video" : "image"} (shown after unlock)`}
+          accept={mediaType === "VIDEO" ? "video/*" : "image/*"}
+          file={mediaFile}
+          uploading={uploadingMedia}
+          onSelect={setMediaFile}
+          onClear={() => setMediaFile(null)}
+          hint={mediaType === "VIDEO" ? "MP4, MOV, WebM — max 512MB" : "JPG, PNG, WebP — max 32MB"}
+        />
+
+        {/* Token cost */}
         <div>
           <label className="block text-sm font-medium text-zinc-300 mb-1">
-            Token cost (0 = free)
+            Token cost (0 = free for everyone)
           </label>
           <input
-            name="tokenCost"
             type="number"
             min={0}
             max={9999}
-            defaultValue={0}
+            value={tokenCost}
+            onChange={(e) => setTokenCost(Number(e.target.value))}
             className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
 
+        {/* Publish toggle */}
         <label className="flex items-center gap-2 cursor-pointer">
-          <input name="isPublished" type="checkbox" defaultChecked className="accent-brand-500 w-4 h-4" />
+          <input
+            type="checkbox"
+            checked={isPublished}
+            onChange={(e) => setIsPublished(e.target.checked)}
+            className="accent-brand-500 w-4 h-4"
+          />
           <span className="text-sm text-zinc-300">Publish immediately</span>
         </label>
 
@@ -99,61 +179,61 @@ export default function UploadPage() {
 
         <button
           type="submit"
-          disabled={loading}
-          className="w-full py-2.5 gradient-brand text-white font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition"
+          disabled={saving || isUploading}
+          className="w-full py-2.5 gradient-brand text-white font-semibold rounded-lg hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center gap-2"
         >
-          {loading ? "Saving…" : "Create post"}
+          <Upload className="w-4 h-4" />
+          {isUploading ? "Uploading files…" : saving ? "Saving…" : "Create post"}
         </button>
       </form>
-
-      <div className="p-4 bg-zinc-900 border border-zinc-700 rounded-xl text-sm space-y-3">
-        <p className="font-medium text-zinc-200">How to host your content</p>
-        <div>
-          <p className="text-zinc-400 font-medium mb-0.5">Images</p>
-          <p className="text-zinc-500">
-            Upload to{" "}
-            <a href="https://imgbb.com" className="text-brand-400 hover:underline" target="_blank">ImgBB</a>
-            {" "}(free) → right-click the image → &quot;Copy image address&quot; → paste the <code className="text-zinc-300">.jpg/.png</code> URL here.
-          </p>
-        </div>
-        <div>
-          <p className="text-zinc-400 font-medium mb-0.5">Videos</p>
-          <p className="text-zinc-500">
-            Upload to{" "}
-            <a href="https://cloudinary.com" className="text-brand-400 hover:underline" target="_blank">Cloudinary</a>
-            {" "}or{" "}
-            <a href="https://bunny.net" className="text-brand-400 hover:underline" target="_blank">Bunny.net</a>
-            {" "}→ copy the direct <code className="text-zinc-300">.mp4</code> link.
-            {" "}<span className="text-red-400 font-medium">Links from xvideos, Pornhub, etc. will not work</span> — you need a direct file URL, not a webpage link.
-          </p>
-        </div>
-      </div>
     </div>
   );
 }
 
-function Field({
+function FilePickerField({
   label,
-  name,
-  placeholder,
-  textarea,
-  required,
+  accept,
+  file,
+  uploading,
+  onSelect,
+  onClear,
+  hint,
 }: {
   label: string;
-  name: string;
-  placeholder?: string;
-  textarea?: boolean;
-  required?: boolean;
+  accept: string;
+  file: File | null;
+  uploading: boolean;
+  onSelect: (f: File) => void;
+  onClear: () => void;
+  hint: string;
 }) {
-  const cls =
-    "w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-50 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-500";
   return (
     <div>
-      <label className="block text-sm font-medium text-zinc-300 mb-1">{label}</label>
-      {textarea ? (
-        <textarea name={name} placeholder={placeholder} rows={3} className={cls} />
+      <label className="block text-sm font-medium text-zinc-300 mb-2">{label}</label>
+
+      {file ? (
+        <div className="flex items-center gap-3 p-3 bg-zinc-900 border border-brand-700 rounded-lg">
+          <CheckCircle className="w-5 h-5 text-brand-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-zinc-200 truncate">{file.name}</p>
+            <p className="text-xs text-zinc-500">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
+          </div>
+          <button type="button" onClick={onClear} className="text-zinc-500 hover:text-red-400 transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       ) : (
-        <input name={name} placeholder={placeholder} required={required} className={cls} />
+        <label className="flex flex-col items-center gap-2 p-6 bg-zinc-900 border-2 border-dashed border-zinc-700 hover:border-brand-500 rounded-lg cursor-pointer transition">
+          <Upload className="w-6 h-6 text-zinc-500" />
+          <span className="text-sm text-zinc-400">Click to choose a file</span>
+          <span className="text-xs text-zinc-600">{hint}</span>
+          <input
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && onSelect(e.target.files[0])}
+          />
+        </label>
       )}
     </div>
   );
