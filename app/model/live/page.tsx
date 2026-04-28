@@ -118,7 +118,8 @@ function ZegoHost({ roomId, userId, userName }: { roomId: string; userId: string
     const serverSecret = process.env.NEXT_PUBLIC_ZEGOCLOUD_SERVER_SECRET!;
     if (!appID || !serverSecret) return;
 
-    let zp: { destroy: () => void } | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let zp: any = null;
 
     import("@zegocloud/zego-uikit-prebuilt").then(({ ZegoUIKitPrebuilt }) => {
       const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
